@@ -20,7 +20,6 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
             detail="Email or username already registered"
         )
     
-    # Create new user
     hashed_password = auth.get_password_hash(user.password)
     db_user = models.User(
         email=user.email,
@@ -66,11 +65,6 @@ def login_user(
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
-
-@router.get("/me", response_model=schemas.User)
-def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
-    """Get current user information."""
-    return current_user
 
 @router.post("/logout")
 def logout_user(response: Response):
