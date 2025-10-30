@@ -82,7 +82,7 @@ async def upload_material(
     
     return db_material
 
-@router.get("/history", response_model=List[schemas.MaterialWithGenerated])
+@router.get("/get-history", response_model=List[schemas.MaterialWithGenerated])
 def get_user_history(
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(get_db)
@@ -90,7 +90,7 @@ def get_user_history(
     """Get user's material upload history."""
     materials = db.query(models.Material).filter(
         models.Material.user_id == current_user.id
-    ).all()
+    ).order_by(models.Material.uploaded_at.desc()).all()
     
     result = []
     for material in materials:
@@ -161,7 +161,6 @@ def delete_material(
         except Exception as e:
             print(f"Error deleting file: {e}")
     
-    # Delete generated data
     db.query(models.GeneratedData).filter(
         models.GeneratedData.material_id == material_id
     ).delete()
@@ -196,9 +195,7 @@ def get_download_url(
             detail="No file associated with this material"
         )
     
-    # Generate presigned URL for secure access
     if not supabase_storage.supabase:
-        # If Supabase is not configured, return the direct URL
         return {"download_url": material.file_url}
     
     try:
