@@ -77,7 +77,7 @@ const LoginForm = ({ onSubmit, loading }) => {
         name="email"
         value={formData.email}
         onChange={handleChange}
-        placeholder="you@example.com"
+        placeholder="ex : name@gmail.com"
         error={errors.email}
         required
         icon={emailIcon}

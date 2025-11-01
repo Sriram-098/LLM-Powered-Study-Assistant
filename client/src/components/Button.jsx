@@ -28,7 +28,7 @@ const Button = ({
   
   const disabledClasses = disabled || loading 
     ? 'opacity-50 cursor-not-allowed' 
-    : ''
+    : 'cursor-pointer'
 
   return (
     <button
