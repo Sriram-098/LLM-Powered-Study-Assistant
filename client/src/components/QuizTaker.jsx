@@ -231,7 +231,7 @@ const QuizTaker = ({ questions, onComplete, onCancel }) => {
         <div className="flex justify-center space-x-4">
           <button
             onClick={() => onComplete(score)}
-            className="px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors"
+            className="px-6 py-3 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors cursor-pointer"
           >
             Finish
           </button>
@@ -270,7 +270,7 @@ const QuizTaker = ({ questions, onComplete, onCancel }) => {
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div 
-            className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+            className="bg-black h-2 rounded-full transition-all duration-300"
             style={{ width: `${progress}%` }}
           ></div>
         </div>
@@ -362,7 +362,7 @@ const QuizTaker = ({ questions, onComplete, onCancel }) => {
             value={answers[currentQuestion] || ''}
             onChange={(e) => handleAnswerSelect(e.target.value)}
             placeholder="Type your answer here..."
-            className="w-full p-4 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none resize-none"
+            className="w-full p-4 border-2 border-gray-200 rounded-lg focus:border-black focus:outline-none resize-none"
             rows={4}
           />
         )}
@@ -396,7 +396,7 @@ const QuizTaker = ({ questions, onComplete, onCancel }) => {
           ) : (
             <button
               onClick={handleNextQuestion}
-              className="px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors"
+              className="px-6 py-3 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors cursor-pointer"
             >
               Next Question
             </button>

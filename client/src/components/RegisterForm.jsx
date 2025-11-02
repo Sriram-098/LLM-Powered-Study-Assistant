@@ -140,7 +140,7 @@ const RegisterForm = ({ onSubmit, loading }) => {
           Already have an account?{' '}
           <Link
             to="/login"
-            className="font-semibold text-purple-600 hover:text-purple-700 transition-colors cursor-pointer"
+            className="text-black hover:text-gray-700 font-semibold transition-colors cursor-pointer"
           >
             Sign in here
           </Link>

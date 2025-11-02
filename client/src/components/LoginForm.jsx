@@ -45,11 +45,11 @@ const LoginForm = ({ onSubmit, loading }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
+
     if (!validateForm()) {
       return
     }
-    
+
     try {
       await onSubmit(formData)
     } catch (error) {
@@ -82,7 +82,7 @@ const LoginForm = ({ onSubmit, loading }) => {
         required
         icon={emailIcon}
       />
-      
+
       <FormInput
         label="Password"
         type="password"
@@ -94,7 +94,7 @@ const LoginForm = ({ onSubmit, loading }) => {
         required
         icon={passwordIcon}
       />
-      
+
       {/* Remember Me & Forgot Password */}
       <div className="flex items-center justify-between">
         <label className="flex items-center">
@@ -107,15 +107,10 @@ const LoginForm = ({ onSubmit, loading }) => {
           />
           <span className="ml-2 text-sm text-gray-600">Remember me</span>
         </label>
-        
-        <Link
-          to="/forgot-password"
-          className="text-sm text-black hover:text-gray-700 font-medium transition-colors cursor-pointer"
-        >
-          Forgot password?
-        </Link>
+
+
       </div>
-      
+
       {/* Sign In Button */}
       <Button
         type="submit"
@@ -126,7 +121,7 @@ const LoginForm = ({ onSubmit, loading }) => {
       >
         {loading ? 'Signing in...' : 'Sign In'}
       </Button>
-      
+
       {/* Sign Up Link */}
       <div className="text-center pt-6 border-t border-gray-200">
         <p className="text-gray-600">

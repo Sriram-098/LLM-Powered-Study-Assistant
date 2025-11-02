@@ -551,7 +551,7 @@ const MaterialView = () => {
 
                     <button
                       onClick={() => setShowQuizTaker(true)}
-                      className="inline-flex items-center px-8 py-4 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors text-lg cursor-pointer"
+                      className="inline-flex items-center px-8 py-4 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors text-lg cursor-pointer"
                     >
                       <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -596,21 +596,29 @@ const MaterialView = () => {
               </span>
               Key Concepts
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               {keyConcepts.map((concept, index) => {
-                // Handle both object format and string format - extract only the concept name
-                const conceptName = typeof concept === 'object' ? concept.concept : concept;
+                // Parse the concept string to extract name and explanation
+                // Format: **Name**\nExplanation
+                const lines = concept.split('\n');
+                const conceptName = lines[0]?.replace(/\*\*/g, '').trim() || concept;
+                const conceptExplanation = lines[1]?.trim() || '';
 
                 return (
                   <div
                     key={index}
-                    className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors cursor-default"
+                    className="bg-gray-50 border border-gray-200 rounded-lg p-5 hover:border-gray-300 transition-colors"
                   >
                     <div className="flex items-start">
-                      <span className="inline-flex items-center justify-center w-6 h-6 bg-black text-white rounded-lg mr-3 flex-shrink-0 text-xs font-bold">
+                      <span className="inline-flex items-center justify-center w-8 h-8 bg-black text-white rounded-lg mr-4 flex-shrink-0 text-sm font-bold">
                         {index + 1}
                       </span>
-                      <span className="text-gray-900 font-semibold">{conceptName}</span>
+                      <div className="flex-1">
+                        <h4 className="text-gray-900 font-bold text-lg mb-2">{conceptName}</h4>
+                        {conceptExplanation && (
+                          <p className="text-gray-600 leading-relaxed">{conceptExplanation}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

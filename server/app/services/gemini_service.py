@@ -389,24 +389,25 @@ RULES:
 You are an AI assistant that extracts and explains key concepts from text.
 
 TASK:
-- Identify the {max_concepts} most relevant and meaningful key concepts or terms.
+- Identify the {max_concepts} most relevant and meaningful key concepts or terms from the content.
 - For each concept, provide a short, clear one-line explanation.
-- Present them in a clean HTML-ready format, where:
-  • The concept name appears as a heading (<h3> with black color).
-  • The explanation appears as a short descriptive line (<p>) below it.
+- Format each concept as: **Concept Name** followed by a newline, then the explanation.
 - Avoid generic or unrelated words like "introduction", "summary", "education", etc.
 - Use simple, natural language that anyone can understand.
-- Do NOT include JSON, lists, or any extra text outside the concept–explanation pairs.
+- Output ONLY the concepts in plain text format, no JSON, no HTML, no extra commentary.
 
-EXAMPLE STYLE:
-<h3 style="color:black;">Extractive Summarization</h3>
-<p>A method that selects and combines key sentences directly from the original document.</p>
+EXAMPLE FORMAT:
+**Machine Learning**
+A field of AI that enables systems to learn and improve automatically from experience without explicit programming.
+
+**Neural Networks**
+Computing systems inspired by biological neural networks that process information through interconnected nodes.
 
 TEXT CONTENT:
 {content}
 
 OUTPUT:
-Write only the formatted concept headings and their one-line explanations in the above HTML pattern.
+Write only the concept names (in bold with **) and their one-line explanations, separated by blank lines.
 """
 
            
@@ -415,29 +416,30 @@ Write only the formatted concept headings and their one-line explanations in the
             response = self.model.generate_content(prompt)
             concepts_text = response.text.strip()
             
-            # Clean up the response to extract JSON
-            if "```json" in concepts_text:
-                concepts_text = concepts_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in concepts_text:
-                concepts_text = concepts_text.split("```")[1].strip()
+            # Clean up markdown code blocks if present
+            if "```" in concepts_text:
+                concepts_text = concepts_text.split("```")[1].split("```")[0].strip()
             
-            try:
-                concepts = json.loads(concepts_text)
-                
-                # Validate the structure
-                if not isinstance(concepts, list):
-                    raise ValueError("Response is not a list")
-                
-                # Ensure all items are strings and limit the count
-                concepts = [str(concept) for concept in concepts if concept][:max_concepts]
-                
-                return concepts
-                
-            except json.JSONDecodeError as e:
-                print(f"JSON parsing error: {e}")
-                print(f"Raw response: {concepts_text}")
-                
-                return self._extract_fallback_concepts(content, max_concepts)
+            # Split by double newlines to get individual concepts
+            # Each concept should be: **Name**\nExplanation
+            concepts_list = []
+            current_concept = []
+            
+            for line in concepts_text.split('\n'):
+                line = line.strip()
+                if not line:
+                    if current_concept:
+                        concepts_list.append('\n'.join(current_concept))
+                        current_concept = []
+                else:
+                    current_concept.append(line)
+            
+            # Add the last concept if exists
+            if current_concept:
+                concepts_list.append('\n'.join(current_concept))
+            
+            # Return list of concepts (each as "**Name**\nExplanation")
+            return concepts_list[:max_concepts]
             
         except Exception as e:
             print(f"Gemini concepts error: {e}")
