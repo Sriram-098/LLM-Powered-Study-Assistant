@@ -20,7 +20,7 @@ try:
         pool_recycle=1800,   # Recycle connections every 30 minutes (Supabase timeout)
         echo=False,          # Set to True for SQL debugging
         connect_args={
-            "sslmode": "require",
+            "sslmode": "disable" if "localhost" in DATABASE_URL or "@db:" in DATABASE_URL else "require",
             "connect_timeout": 10,
             "application_name": "study_assistant"
         }

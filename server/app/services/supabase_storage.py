@@ -82,14 +82,23 @@ class SupabaseStorageService:
             print(f"Uploading file to path: {file_path}")
             
             # Upload to Supabase Storage
-            response = self.supabase.storage.from_(self.bucket_name).upload(
-                path=file_path,
-                file=file_content,
-                file_options={
-                    "content-type": content_type,
-                    "upsert": False
-                }
-            )
+            # Convert bytes to the format expected by Supabase
+            try:
+                response = self.supabase.storage.from_(self.bucket_name).upload(
+                    path=file_path,
+                    file=file_content,
+                    file_options={
+                        "content-type": content_type,
+                        "upsert": "false"  # Changed from False to "false" string
+                    }
+                )
+            except Exception as upload_error:
+                print(f"Upload exception: {upload_error}")
+                print(f"Exception type: {type(upload_error)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Upload failed: {str(upload_error)}"
+                )
             
             print(f"Upload response type: {type(response)}")
             print(f"Upload response: {response}")
@@ -99,7 +108,14 @@ class SupabaseStorageService:
             upload_successful = False
             error_message = None
             
-            if hasattr(response, 'data') and response.data is not None:
+            # Handle boolean response (newer Supabase client versions)
+            if isinstance(response, bool):
+                if response:
+                    print(f"Upload successful (boolean response)")
+                    upload_successful = True
+                else:
+                    error_message = "Upload returned False"
+            elif hasattr(response, 'data') and response.data is not None:
                 # Upload successful - has data
                 print(f"Upload successful with data: {response.data}")
                 upload_successful = True
