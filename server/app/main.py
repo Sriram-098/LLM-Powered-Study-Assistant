@@ -17,14 +17,16 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # React dev server
-        "http://localhost:3001",  # Alternative React port
-        "http://127.0.0.1:3000",  # Alternative localhost
-        "http://127.0.0.1:3001"   # Alternative localhost
+        "http://localhost:3000",    # React dev server
+        "http://localhost:5173",    # Vite dev server
+        "http://localhost:5174",    # Alternative Vite port
+        "http://127.0.0.1:3000",    # Alternative localhost
+        "http://127.0.0.1:5173",    # Alternative localhost
+        "http://127.0.0.1:5174"     # Alternative localhost
     ],
     allow_credentials=True,
     allow_methods=["*"],
-allow_headers=["*"],
+    allow_headers=["*"],
 )
 
 # Include routers

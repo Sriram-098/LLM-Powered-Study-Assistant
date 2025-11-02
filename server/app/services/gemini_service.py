@@ -13,43 +13,108 @@ class GeminiService:
         
         try:
             genai.configure(api_key=self.api_key)
-            try:
-                self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
-            except:
+            
+            # Try different model names in order of preference
+            model_names = [
+                'gemini-2.5-flash-lite',      # Current stable model
+                'gemini-2.5-pro',        # Pro version
+                     
+            ]
+            
+            self.model = None
+            for model_name in model_names:
                 try:
-                    self.model = genai.GenerativeModel('gemini-1.5-flash')
-                except:
-                    try:
-                        self.model = genai.GenerativeModel('gemini-pro')
-                    except:
-                        self.model = genai.GenerativeModel('models/gemini-pro')
-            print("✓ Gemini AI service initialized successfully")
+                    print(f"Trying to initialize model: {model_name}")
+                    test_model = genai.GenerativeModel(model_name)
+                    
+                    # Test the model with a simple request to ensure it works
+                    test_response = test_model.generate_content("Hello")
+                    if test_response and hasattr(test_response, 'text'):
+                        self.model = test_model
+                        print(f"✓ Successfully initialized and tested Gemini model: {model_name}")
+                        break
+                    else:
+                        print(f"⚠ Model {model_name} initialized but test failed")
+                        continue
+                        
+                except Exception as model_error:
+                    print(f"⚠ Failed to initialize {model_name}: {str(model_error)}")
+                    continue
+            
+            if not self.model:
+                print("❌ Failed to initialize any Gemini model")
+                print("Listing available models for debugging:")
+                self.list_available_models()
+                
         except Exception as e:
-            print(f"⚠ Failed to initialize Gemini AI: {e}")
+            print(f"⚠ Failed to configure Gemini AI: {e}")
             self.model = None
     
     def is_configured(self) -> bool:
         """Check if Gemini AI is properly configured."""
         return self.model is not None
     
+    def list_available_models(self):
+        """List available Gemini models for debugging."""
+        try:
+            if not self.api_key:
+                print("No API key configured")
+                return
+            
+            genai.configure(api_key=self.api_key)
+            models = genai.list_models()
+            print("Available Gemini models:")
+            for model in models:
+                print(f"  - {model.name}")
+                if hasattr(model, 'supported_generation_methods'):
+                    print(f"    Supported methods: {model.supported_generation_methods}")
+        except Exception as e:
+            print(f"Error listing models: {e}")
+    
+    def reinitialize_model(self):
+        """Reinitialize the model if there are issues."""
+        print("Reinitializing Gemini model...")
+        self.__init__()  # Reinitialize the service
+    
     def generate_summary(self, content: str, max_length: int = 300) -> str:
-        """Generate a concise summary of the given content."""
+        """Generate an intelligent, content-focused summary for personalized learning."""
         if not self.is_configured():
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="LLM service is not configured. Please set GEMINI_API_KEY."
             )
         
+        # Process content for better analysis
+        content_preview = content[:3000] if len(content) > 3000 else content
+        
         try:
             prompt = f"""
-Please provide a concise summary of the following text in approximately {max_length} words. 
-Focus on the main concepts, key points, and important information.
+You are an AI summarization assistant.
+Your task is to read the following content and write a single, concise, foreword-style summary that introduces what the text is about.
 
-Text to summarize:
-{content}
+INSTRUCTIONS:
+- Use a conversational and engaging tone, as if introducing the reader to the topic.
+- Clearly mention the main ideas, themes, and purpose of the content.
+- Explain briefly why the topic is interesting or useful to learn.
+- Keep the language natural, friendly, and easy to follow.
+- The summary must be under 1000 words and written as ONE continuous paragraph.
 
-Summary:
+STRICTLY AVOID:
+- Academic, robotic, or overly formal tone.
+- Repetition, filler phrases, or vague sentences.
+- Long explanations, bullet points, or structured formatting.
+- Meta-text like "This passage discusses..." — make it read naturally.
+
+STYLE EXAMPLE:
+"This content explores [main topic] and covers [key areas]. You'll learn about [important concepts] and understand how [connections/applications]. This material is valuable for [why it matters] and will help you [practical benefit]."
+
+CONTENT:
+{content_preview}
+
+OUTPUT:
+Write only the final summary paragraph with no titles, notes, or extra commentary.
 """
+
             
             print(f"Generating summary with model: {self.model}")
             response = self.model.generate_content(prompt)
@@ -71,85 +136,245 @@ Summary:
         except Exception as e:
             print(f"Gemini summary error: {e}")
             print(f"Error type: {type(e)}")
+            
+            # If it's a model not found error, try to reinitialize
+            if "not found" in str(e).lower() or "404" in str(e):
+                print("Model not found error detected, trying to reinitialize...")
+                try:
+                    self.reinitialize_model()
+                    if self.is_configured():
+                        print("Retrying summary generation with reinitialized model...")
+                        response = self.model.generate_content(prompt)
+                        if hasattr(response, 'text') and response.text:
+                            return response.text.strip()
+                except Exception as retry_error:
+                    print(f"Retry failed: {retry_error}")
+            
             # Return fallback summary instead of raising error
             return self._generate_fallback_summary(content, max_length)
     
-    def generate_quiz(self, content: str, num_mcq: int = 10, num_short: int = 5) -> List[Dict[str, Any]]:
-        """Generate quiz questions from the given content with specified MCQ and short answer counts."""
+
+    
+    def generate_quiz(self, content: str, num_mcq: int = 8, num_short: int = 4) -> List[Dict[str, Any]]:
+        """Generate high-quality, content-specific revision quiz questions."""
         if not self.is_configured():
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="LLM service is not configured. Please set GEMINI_API_KEY."
             )
         
-        total_questions = num_mcq + num_short
+        # Calculate question distribution: MCQ (including T/F), Short Answer
+        num_true_false = max(2, num_mcq // 3)  # About 1/3 of MCQ questions as T/F
+        num_multiple_choice = num_mcq - num_true_false
+        total_questions = num_multiple_choice + num_true_false + num_short
         
-        try:
-            prompt = f"""
-Based on the following text, create exactly {total_questions} quiz questions:
-- {num_mcq} multiple choice questions (MCQs) with 4 options each
+        # Process content to give AI the best material to work with
+        # Take a larger sample but clean it up
+        content_length = len(content)
+        if content_length > 3000:
+            # Take first 1500 and last 1500 characters to get beginning and end context
+            content_preview = content[:1500] + "\n\n[...content continues...]\n\n" + content[-1500:]
+        else:
+            content_preview = content
+        
+        # Clean up the content preview
+        content_preview = content_preview.replace('\n\n\n', '\n\n')  # Remove excessive line breaks
+        content_preview = ' '.join(content_preview.split())  # Normalize whitespace but preserve structure
+        
+        # Try up to 2 times to get good content-specific questions
+        for attempt in range(2):
+            try:
+                attempt_suffix = ""
+                if attempt > 0:
+                    attempt_suffix = f"""
+                    
+IMPORTANT: The previous attempt generated generic questions. This time, focus ONLY on the specific content provided. 
+Create questions that someone could only answer if they read THIS specific material.
+Use actual names, terms, concepts, and facts from the content above."""
+                
+                prompt = f"""
+You are an intelligent quiz generation assistant. Your task is to create high-quality quiz questions based ONLY on the content provided below. 
+Carefully read the text and ensure every question and answer directly references information from it — no general knowledge or assumptions.
+
+CONTENT:
+{content_preview}
+
+TASK:
+Generate exactly {total_questions} questions divided as follows:
+- {num_multiple_choice} multiple choice questions (4 options each)
+- {num_true_false} true/false questions
 - {num_short} short answer questions
 
-Make sure the questions cover different aspects of the content and vary in difficulty.
-Format your response as a JSON array with the following structure:
+INSTRUCTIONS:
+- All questions MUST be factual and directly derived from the given content.
+- Avoid repeating ideas or using vague wording.
+- Ensure every correct answer is explicitly supported by the text.
+- Do NOT include questions about the type of document, studying methods, or unrelated topics.
+- Maintain a balance of easy, medium, and hard difficulty levels.
 
+OUTPUT STRICTLY in valid JSON format:
 [
   {{
-    "question": "Question text here",
+    "question": "Specific question about the content",
     "type": "multiple_choice",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correct_answer": "Option A",
-    "explanation": "Brief explanation of why this is correct",
-    "difficulty": "easy|medium|hard"
+    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+    "correct_answer": "Exact correct option text",
+    "explanation": "Why this answer is correct, citing the text",
+    "difficulty": "medium",
+    "concept": "Key topic or idea from content"
   }},
   {{
-    "question": "Question text here",
+    "question": "True or false question directly from the content",
+    "type": "true_false",
+    "options": ["True", "False"],
+    "correct_answer": "True",
+    "explanation": "Brief explanation referencing the text",
+    "difficulty": "easy",
+    "concept": "Main concept involved"
+  }},
+  {{
+    "question": "Short answer question requiring understanding of a key concept",
     "type": "short_answer",
-    "sample_answer": "Sample answer here",
-    "explanation": "What should be included in the answer",
-    "difficulty": "easy|medium|hard"
+    "sample_answer": "Answer written based on content facts",
+    "explanation": "What the learner should mention in their answer",
+    "difficulty": "hard",
+    "concept": "Topic the question tests"
   }}
 ]
 
-Text content:
-{content}
-
-Quiz Questions (JSON format only):
+RULES:
+- Output only valid JSON (no extra text, no markdown).
+- Every question must be traceable to the provided content.
+- If the text lacks enough data, focus only on available facts and reduce difficulty accordingly.
+{attempt_suffix}
 """
-            
-            response = self.model.generate_content(prompt)
-            quiz_text = response.text.strip()
-            
-            # Clean up the response to extract JSON
-            if "```json" in quiz_text:
-                quiz_text = quiz_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in quiz_text:
-                quiz_text = quiz_text.split("```")[1].strip()
-            
-            try:
-                quiz_questions = json.loads(quiz_text)
-                con
-                # Validate the structure
-                if not isinstance(quiz_questions, list):
-                    raise ValueError("Response is not a list")
+
                 
-                for q in quiz_questions:
-                    if not isinstance(q, dict) or "question" not in q or "type" not in q:
-                        raise ValueError("Invalid question structure")
+                print(f"Generating high-quality quiz with model: {self.model}")
+                response = self.model.generate_content(prompt)
                 
-                return quiz_questions
+                if not response or not hasattr(response, 'text'):
+                    print("No valid response from Gemini")
+                    if attempt == 1:
+                        return self._create_fallback_quiz(content, num_mcq, num_short)
+                    continue
                 
-            except json.JSONDecodeError as e:
-                print(f"JSON parsing error: {e}")
-                print(f"Raw response: {quiz_text}")
+                quiz_text = response.text.strip()
+                print(f"Raw quiz response length: {len(quiz_text)}")
                 
-                # Fallback: create a simple quiz structure
-                return self._create_fallback_quiz(content, num_mcq, num_short)
-            
-        except Exception as e:
-            print(f"Gemini quiz error: {e}")
-            # Return fallback quiz instead of raising error
-            return self._create_fallback_quiz(content, num_mcq, num_short)
+                # More robust JSON extraction
+                json_text = quiz_text
+                
+                # Remove markdown code blocks
+                if "```json" in json_text:
+                    json_text = json_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in json_text:
+                    json_text = json_text.split("```")[1].split("```")[0].strip()
+                
+                # Remove any leading/trailing text that's not JSON
+                json_start = json_text.find('[')
+                json_end = json_text.rfind(']')
+                
+                if json_start != -1 and json_end != -1 and json_end > json_start:
+                    json_text = json_text[json_start:json_end + 1]
+                
+                # Clean up common JSON issues
+                json_text = json_text.replace('\n', ' ').replace('\r', ' ')
+                json_text = ' '.join(json_text.split())  # Normalize whitespace
+                
+                try:
+                    quiz_questions = json.loads(json_text)
+                    
+                    # Validate the structure
+                    if not isinstance(quiz_questions, list):
+                        print(f"Response is not a list: {type(quiz_questions)}")
+                        if attempt == 1:
+                            return self._create_fallback_quiz(content, num_mcq, num_short)
+                        continue
+                    
+                    if len(quiz_questions) == 0:
+                        print("Empty questions list received")
+                        if attempt == 1:
+                            return self._create_fallback_quiz(content, num_mcq, num_short)
+                        continue
+                    
+                    # Validate each question and check for content specificity
+                    valid_questions = []
+                    generic_indicators = [
+                        'type of document', 'study material', 'educational purposes', 'best way to',
+                        'primary purpose', 'main topic', 'document is', 'material contains',
+                        'content is', 'information is', 'text is', 'suitable for', 'designed for',
+                        'would be best', 'most likely', 'general information', 'basic information'
+                    ]
+                    
+                    for i, q in enumerate(quiz_questions):
+                        if not isinstance(q, dict):
+                            print(f"Question {i} is not a dict: {type(q)}")
+                            continue
+                        
+                        required_fields = ["question", "type", "correct_answer", "explanation"]
+                        if not all(field in q for field in required_fields):
+                            print(f"Question {i} missing required fields: {q.keys()}")
+                            continue
+                        
+                        # Validate question types
+                        if q["type"] not in ["multiple_choice", "true_false", "short_answer"]:
+                            print(f"Question {i} has invalid type: {q['type']}")
+                            continue
+                        
+                        # Validate options for multiple choice and true/false
+                        if q["type"] in ["multiple_choice", "true_false"] and "options" not in q:
+                            print(f"Question {i} missing options for {q['type']}")
+                            continue
+                        
+                        # Check if question is too generic
+                        question_text = q["question"].lower()
+                        is_generic = any(indicator in question_text for indicator in generic_indicators)
+                        
+                        if is_generic:
+                            print(f"Question {i} appears to be generic: {q['question'][:50]}...")
+                            continue
+                        
+                        # Check if multiple choice options are too generic
+                        if q["type"] == "multiple_choice" and "options" in q:
+                            generic_options = [
+                                'educational content', 'study notes', 'technical manual', 
+                                'learning and education', 'for studying', 'general information',
+                                'research material', 'technical documentation'
+                            ]
+                            options_text = ' '.join(q["options"]).lower()
+                            if any(generic_opt in options_text for generic_opt in generic_options):
+                                print(f"Question {i} has generic options: {q['options']}")
+                                continue
+                        
+                        valid_questions.append(q)
+                    
+                    if len(valid_questions) >= total_questions // 2:  # At least half the questions are valid
+                        print(f"Successfully generated {len(valid_questions)} valid questions on attempt {attempt + 1}")
+                        return valid_questions
+                    else:
+                        print(f"Attempt {attempt + 1}: Too few valid questions: {len(valid_questions)} out of {total_questions}")
+                        if attempt == 1:  # Last attempt
+                            return self._create_fallback_quiz(content, num_mcq, num_short)
+                        # Continue to next attempt
+                
+                except json.JSONDecodeError as e:
+                    print(f"Attempt {attempt + 1}: JSON parsing error: {e}")
+                    print(f"Cleaned JSON text: {json_text[:500]}...")
+                    if attempt == 1:  # Last attempt
+                        return self._create_fallback_quiz(content, num_mcq, num_short)
+                    # Continue to next attempt
+                
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Error during quiz generation: {e}")
+                if attempt == 1:  # Last attempt
+                    return self._create_fallback_quiz(content, num_mcq, num_short)
+                # Continue to next attempt
+        
+        # If we get here, all attempts failed
+        print("All attempts failed, using fallback quiz")
+        return self._create_fallback_quiz(content, num_mcq, num_short)
+
     
     def extract_concepts(self, content: str, max_concepts: int = 10) -> List[str]:
         """Extract key concepts and terms from the given content."""
@@ -161,17 +386,31 @@ Quiz Questions (JSON format only):
         
         try:
             prompt = f"""
-Analyze the following text and extract the most important key concepts, terms, and topics.
-Return only the concepts as a JSON array of strings, with no additional text or formatting.
-Limit to {max_concepts} most important concepts.
+You are an AI assistant that extracts and explains key concepts from text.
 
-Example format: ["Concept 1", "Concept 2", "Concept 3"]
+TASK:
+- Identify the {max_concepts} most relevant and meaningful key concepts or terms.
+- For each concept, provide a short, clear one-line explanation.
+- Present them in a clean HTML-ready format, where:
+  • The concept name appears as a heading (<h3> with black color).
+  • The explanation appears as a short descriptive line (<p>) below it.
+- Avoid generic or unrelated words like "introduction", "summary", "education", etc.
+- Use simple, natural language that anyone can understand.
+- Do NOT include JSON, lists, or any extra text outside the concept–explanation pairs.
 
-Text content:
+EXAMPLE STYLE:
+<h3 style="color:black;">Extractive Summarization</h3>
+<p>A method that selects and combines key sentences directly from the original document.</p>
+
+TEXT CONTENT:
 {content}
 
-Key Concepts (JSON array only):
+OUTPUT:
+Write only the formatted concept headings and their one-line explanations in the above HTML pattern.
 """
+
+           
+
             
             response = self.model.generate_content(prompt)
             concepts_text = response.text.strip()
@@ -205,77 +444,197 @@ Key Concepts (JSON array only):
             # Return fallback concepts instead of raising error
             return self._extract_fallback_concepts(content, max_concepts)
     
-    def _create_fallback_quiz(self, content: str, num_mcq: int = 10, num_short: int = 5) -> List[Dict[str, Any]]:
-        """Create a simple fallback quiz when AI generation fails."""
-        mcq_questions = []
-        short_questions = []
+    def _create_fallback_quiz(self, content: str, num_mcq: int = 8, num_short: int = 4) -> List[Dict[str, Any]]:
+        """Create a content-aware fallback quiz when AI generation fails."""
+        questions = []
         
-        # Generate MCQ questions
-        mcq_templates = [
+        # Calculate question distribution
+        num_true_false = max(2, num_mcq // 3)
+        num_multiple_choice = num_mcq - num_true_false
+        
+        # Try to extract some basic information from content for better questions
+        content_words = content.lower().split()
+        content_sentences = content.split('.')[:10]  # First 10 sentences
+        
+        # Extract potential key terms (words longer than 4 characters, not common words)
+        common_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'man', 'way', 'she', 'use', 'your', 'said', 'each', 'make', 'most', 'over', 'such', 'time', 'very', 'what', 'with', 'have', 'from', 'they', 'know', 'want', 'been', 'good', 'much', 'some', 'well', 'were', 'this', 'that', 'will', 'would', 'there', 'their', 'could', 'should', 'about', 'after', 'first', 'never', 'these', 'think', 'where', 'being', 'every', 'great', 'might', 'shall', 'still', 'those', 'under', 'while', 'before', 'through', 'between', 'important', 'example', 'because', 'however', 'therefore', 'although', 'including', 'according', 'different', 'following', 'information'}
+        
+        key_terms = []
+        for word in content_words:
+            clean_word = word.strip('.,!?;:"()[]{}').title()
+            if len(clean_word) > 4 and clean_word.lower() not in common_words and clean_word not in key_terms:
+                key_terms.append(clean_word)
+        
+        key_terms = key_terms[:20]  # Limit to top 20 terms
+        
+        # Content-aware multiple choice templates
+        mcq_templates = []
+        
+        # Add content-specific questions if we have key terms
+        if key_terms:
+            mcq_templates.extend([
+                {
+                    "question": f"Which of the following terms is most relevant to the main concepts discussed in this material?",
+                    "options": [key_terms[0] if len(key_terms) > 0 else "Main concept", 
+                              "Unrelated term", "Generic concept", "Random topic"],
+                    "correct_answer": key_terms[0] if len(key_terms) > 0 else "Main concept",
+                    "concept": "Key term identification"
+                },
+                {
+                    "question": f"Based on the content, which concept is most emphasized?",
+                    "options": [key_terms[1] if len(key_terms) > 1 else "Primary concept",
+                              key_terms[2] if len(key_terms) > 2 else "Secondary concept", 
+                              "Unrelated concept", "Minor detail"],
+                    "correct_answer": key_terms[1] if len(key_terms) > 1 else "Primary concept",
+                    "concept": "Concept emphasis"
+                }
+            ])
+        
+        # Add general but improved templates
+        mcq_templates.extend([
             {
-                "question": "Which of the following best describes the main topic of this material?",
-                "options": ["Educational content", "Technical documentation", "Research material", "General information"],
-                "correct_answer": "Educational content"
+                "question": "What is the primary focus of this study material?",
+                "options": ["The main concepts and ideas presented", "Unrelated topics", "General knowledge", "Basic information"],
+                "correct_answer": "The main concepts and ideas presented",
+                "concept": "Content focus"
             },
             {
-                "question": "What type of document is this most likely to be?",
-                "options": ["Study notes", "Technical manual", "News article", "Fiction"],
-                "correct_answer": "Study notes"
+                "question": "How would you best describe the level of detail in this material?",
+                "options": ["Comprehensive and detailed", "Very basic", "Extremely complex", "Incomplete"],
+                "correct_answer": "Comprehensive and detailed",
+                "concept": "Content depth"
             },
             {
-                "question": "Based on the content, what is the primary purpose?",
-                "options": ["Learning and education", "Entertainment", "News reporting", "Marketing"],
-                "correct_answer": "Learning and education"
-            },
-            {
-                "question": "What would be the best way to use this material?",
-                "options": ["For studying and review", "For entertainment", "For reference only", "For criticism"],
-                "correct_answer": "For studying and review"
+                "question": "What type of learning approach would work best with this material?",
+                "options": ["Active study and review", "Passive reading only", "Memorization without understanding", "Casual browsing"],
+                "correct_answer": "Active study and review",
+                "concept": "Learning strategy"
             }
-        ]
+        ])
         
-        short_templates = [
+        # Content-aware True/False templates
+        tf_templates = []
+        
+        # Add content-specific true/false questions
+        if len(content_sentences) > 2:
+            tf_templates.extend([
+                {
+                    "question": f"The material discusses concepts that require careful study and understanding.",
+                    "correct_answer": "True",
+                    "explanation": f"Based on the content structure and depth, this material contains concepts that benefit from thorough study.",
+                    "concept": "Study requirements"
+                },
+                {
+                    "question": f"This material covers only surface-level information without depth.",
+                    "correct_answer": "False",
+                    "explanation": f"The content demonstrates depth and complexity that goes beyond surface-level treatment.",
+                    "concept": "Content depth"
+                }
+            ])
+        
+        # Add improved general templates
+        tf_templates.extend([
             {
-                "question": "What is the main topic discussed in this material?",
-                "sample_answer": "Based on the provided content, identify the primary subject matter and key themes.",
-                "explanation": "Look for recurring themes and central ideas in the text."
+                "question": "This material is structured to facilitate learning and comprehension.",
+                "correct_answer": "True",
+                "explanation": "The organization and presentation of the content supports effective learning.",
+                "concept": "Learning structure"
             },
             {
-                "question": "Summarize the key points covered in this material.",
-                "sample_answer": "Provide a brief overview of the main concepts and important information presented.",
-                "explanation": "Focus on the most important ideas and concepts."
+                "question": "The content can be fully understood without any active engagement.",
+                "correct_answer": "False",
+                "explanation": "Effective learning from this material requires active reading and engagement with the concepts.",
+                "concept": "Active learning"
             },
             {
-                "question": "What are the main learning objectives of this material?",
-                "sample_answer": "Identify what students should understand or be able to do after studying this content.",
-                "explanation": "Consider the educational goals and outcomes."
+                "question": "This material would benefit from review and practice to master the concepts.",
+                "correct_answer": "True",
+                "explanation": "Complex educational content typically requires multiple exposures and practice for mastery.",
+                "concept": "Mastery requirements"
             }
-        ]
+        ])
         
-        # Create MCQ questions
-        for i in range(min(num_mcq, len(mcq_templates))):
+        # Content-aware short answer templates
+        short_templates = []
+        
+        # Add content-specific short answer questions
+        if key_terms:
+            short_templates.extend([
+                {
+                    "question": f"Explain the significance of the key concepts presented in this material and how they relate to each other.",
+                    "sample_answer": f"The material presents several important concepts including {', '.join(key_terms[:3])}. These concepts are interconnected and build upon each other to create a comprehensive understanding of the subject matter.",
+                    "explanation": "Students should identify the main concepts and explain their relationships and importance.",
+                    "concept": "Concept relationships"
+                },
+                {
+                    "question": f"Describe how you would use the information in this material to solve a related problem or answer questions in this field.",
+                    "sample_answer": f"The material provides foundational knowledge about {key_terms[0] if key_terms else 'the main topic'} that can be applied by analyzing the key principles and applying them systematically to new situations.",
+                    "explanation": "Students should demonstrate understanding by showing how to apply the concepts practically.",
+                    "concept": "Practical application"
+                }
+            ])
+        
+        # Add improved general templates
+        short_templates.extend([
+            {
+                "question": "What are the most important takeaways from this material, and why are they significant?",
+                "sample_answer": "The most important takeaways include the core concepts, their practical implications, and how they contribute to understanding the broader subject area. These are significant because they form the foundation for further learning and application.",
+                "explanation": "Students should identify key concepts and explain their importance and relevance.",
+                "concept": "Key takeaways"
+            },
+            {
+                "question": "How would you explain the main ideas in this material to someone unfamiliar with the topic?",
+                "sample_answer": "I would start with the basic concepts, provide clear definitions, use examples to illustrate key points, and show how the ideas connect to create a complete understanding of the subject.",
+                "explanation": "Students should demonstrate understanding by being able to teach or explain the concepts clearly.",
+                "concept": "Concept explanation"
+            },
+            {
+                "question": "What questions would you ask to test someone's understanding of this material?",
+                "sample_answer": "I would ask about the main concepts, their relationships, practical applications, and how they fit into the broader context of the subject area.",
+                "explanation": "Students should understand the material well enough to identify what aspects are most important to test.",
+                "concept": "Assessment understanding"
+            }
+        ])
+        
+        # Create multiple choice questions
+        for i in range(min(num_multiple_choice, len(mcq_templates))):
             template = mcq_templates[i % len(mcq_templates)]
-            mcq_questions.append({
+            questions.append({
                 "question": template["question"],
                 "type": "multiple_choice",
                 "options": template["options"],
                 "correct_answer": template["correct_answer"],
-                "explanation": f"This is a fallback question generated when AI processing is unavailable.",
-                "difficulty": "easy"
+                "explanation": "This is a fallback question generated when AI processing is unavailable.",
+                "difficulty": "easy",
+                "concept": template["concept"]
+            })
+        
+        # Create true/false questions
+        for i in range(min(num_true_false, len(tf_templates))):
+            template = tf_templates[i % len(tf_templates)]
+            questions.append({
+                "question": template["question"],
+                "type": "true_false",
+                "options": ["True", "False"],
+                "correct_answer": template["correct_answer"],
+                "explanation": template["explanation"],
+                "difficulty": "easy",
+                "concept": template["concept"]
             })
         
         # Create short answer questions
         for i in range(min(num_short, len(short_templates))):
             template = short_templates[i % len(short_templates)]
-            short_questions.append({
+            questions.append({
                 "question": template["question"],
                 "type": "short_answer",
                 "sample_answer": template["sample_answer"],
                 "explanation": template["explanation"],
-                "difficulty": "medium"
+                "difficulty": "medium",
+                "concept": template["concept"]
             })
         
-        return mcq_questions + short_questions
+        return questions
     
     def _extract_fallback_concepts(self, content: str, max_concepts: int) -> List[str]:
         """Extract basic concepts when AI extraction fails."""
@@ -294,22 +653,40 @@ Key Concepts (JSON array only):
         return concepts[:max_concepts]
 
     def _generate_fallback_summary(self, content: str, max_length: int) -> str:
-        """Generate a simple fallback summary when AI generation fails."""
+        """Generate a concise, foreword-style fallback summary."""
         words = content.split()
+        sentences = content.split('.')
         
-        if len(words) <= max_length:
-            return content
+        # Get the opening content
+        first_sentence = sentences[0].strip() if sentences else ""
         
-        # Take first portion of content as summary
-        summary_words = words[:max_length]
-        summary = " ".join(summary_words)
+        # Extract key terms
+        meaningful_words = []
+        common_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'this', 'that', 'with', 'have', 'from', 'they', 'been', 'said', 'each', 'make', 'most', 'over', 'such', 'time', 'very', 'what', 'will', 'would', 'there', 'could', 'should'}
         
-        # Try to end at a sentence boundary
-        sentences = summary.split('.')
-        if len(sentences) > 1:
-            summary = '. '.join(sentences[:-1]) + '.'
+        for word in words:
+            clean_word = word.strip('.,!?;:"()[]{}').title()
+            if len(clean_word) > 4 and clean_word.lower() not in common_words:
+                meaningful_words.append(clean_word)
         
-        return f"Summary: {summary}"
+        key_terms = list(set(meaningful_words))[:3]  # Just top 3 terms
+        
+        # Create simple foreword-style summary
+        summary_parts = []
+        
+        if first_sentence:
+            summary_parts.append(first_sentence + ".")
+        
+        if key_terms:
+            summary_parts.append(f"\nThis material covers {', '.join(key_terms[:-1])} and {key_terms[-1]}." if len(key_terms) > 1 else f"\nThis material focuses on {key_terms[0]}.")
+        
+        # Add a simple learning note
+        if len(sentences) > 2:
+            summary_parts.append("\nThis content will help you understand the key concepts and their practical applications.")
+        
+        return "\n".join(summary_parts)
+    
+
 
 # Create a singleton instance
 gemini_service = GeminiService()
