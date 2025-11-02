@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import engine
 from . import models
 from .routers import auth, materials, llm
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -13,17 +17,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
+# Configure CORS - Read allowed origins from environment variable
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+allowed_origins = [origin.strip() for origin in cors_origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",    # React dev server
-        "http://localhost:5173",    # Vite dev server
-        "http://localhost:5174",    # Alternative Vite port
-        "http://127.0.0.1:3000",    # Alternative localhost
-        "http://127.0.0.1:5173",    # Alternative localhost
-        "http://127.0.0.1:5174"     # Alternative localhost
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

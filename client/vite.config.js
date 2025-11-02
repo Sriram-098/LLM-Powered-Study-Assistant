@@ -11,6 +11,11 @@ export default defineConfig({
     watch: {
       usePolling: true,
     },
+    allowedHosts: [
+      'optima-frontend-u6hi.onrender.com',
+      'localhost',
+      '.onrender.com', // Allow all Render subdomains
+    ],
   },
   test: {
     globals: true,
