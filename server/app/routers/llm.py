@@ -317,7 +317,7 @@ def get_llm_status():
     """Get the status of the LLM service."""
     return {
         "service": "Google Gemini AI",
-        "model": "gemini-pro",
+        "model": gemini_service.model.model_name if gemini_service.model else "Not initialized",
         "configured": gemini_service.is_configured(),
         "features": {
             "summarization": gemini_service.is_configured(),
@@ -325,3 +325,41 @@ def get_llm_status():
             "concept_extraction": gemini_service.is_configured()
         }
     }
+
+@router.post("/test-model")
+def test_model():
+    """Test the Gemini model to ensure it's working."""
+    if not gemini_service.is_configured():
+        return {
+            "status": "error",
+            "message": "Gemini service not configured",
+            "configured": False
+        }
+    
+    try:
+        # Test with a simple prompt
+        response = gemini_service.model.generate_content("Hello, please respond with 'Model is working correctly'")
+        
+        if hasattr(response, 'text') and response.text:
+            return {
+                "status": "success",
+                "message": "Model is working correctly",
+                "model_name": gemini_service.model.model_name,
+                "response": response.text.strip(),
+                "configured": True
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Model responded but no text received",
+                "model_name": gemini_service.model.model_name,
+                "configured": True
+            }
+            
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Model test failed: {str(e)}",
+            "model_name": gemini_service.model.model_name if gemini_service.model else "Unknown",
+            "configured": gemini_service.is_configured()
+        }

@@ -4,10 +4,87 @@ from sqlalchemy.orm import Session
 from .. import models, schemas, auth
 from ..database import get_db
 from ..services.supabase_storage import supabase_storage
+from ..services.gemini_service import gemini_service
 import PyPDF2
 import io
+import json
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/materials", tags=["materials"])
+
+# Pydantic model for text upload
+class TextUpload(BaseModel):
+    title: str
+    content: str
+
+async def auto_process_with_llm(material: models.Material, db: Session):
+    """
+    Automatically process uploaded material with LLM to:
+    - Generate concise summaries
+    - Create quiz questions for revision
+    - Extract key concepts and terms in neat structured format
+    """
+    if not material.content or len(material.content.strip()) < 50:
+        print(f"⚠ Content too short for LLM processing: {len(material.content.strip())} characters")
+        return None
+    
+    if not gemini_service.is_configured():
+        print("⚠ LLM service not configured - skipping automatic processing")
+        return None
+    
+    print(f"🤖 Starting automatic LLM processing for material: {material.title}")
+    
+    try:
+        # Initialize results
+        summary = None
+        quiz_questions = None
+        key_concepts = None
+        
+        # 1. Generate concise summary
+        try:
+            print("📝 Generating concise summary...")
+            summary = gemini_service.generate_summary(material.content)
+            print(f"✅ Summary generated successfully ({len(summary)} characters)")
+        except Exception as e:
+            print(f"❌ Failed to generate summary: {e}")
+        
+        # 2. Create quiz questions for revision
+        try:
+            print("❓ Creating quiz questions for revision...")
+            quiz_questions = gemini_service.generate_quiz(material.content, num_mcq=8, num_short=4)
+            print(f"✅ Quiz questions created successfully ({len(quiz_questions)} questions)")
+        except Exception as e:
+            print(f"❌ Failed to create quiz questions: {e}")
+        
+        # 3. Extract key concepts and terms in structured format
+        try:
+            print("🔍 Extracting key concepts and terms...")
+            key_concepts = gemini_service.extract_concepts(material.content, max_concepts=12)
+            print(f"✅ Key concepts extracted successfully ({len(key_concepts)} concepts)")
+        except Exception as e:
+            print(f"❌ Failed to extract key concepts: {e}")
+        
+        # Save all generated data to database
+        if summary or quiz_questions or key_concepts:
+            generated_data = models.GeneratedData(
+                material_id=material.id,
+                summary=summary,
+                quiz_questions=json.dumps(quiz_questions) if quiz_questions else None,
+                key_concepts=json.dumps(key_concepts) if key_concepts else None
+            )
+            db.add(generated_data)
+            db.commit()
+            db.refresh(generated_data)
+            
+            print(f"💾 All LLM-generated data saved to database for material: {material.title}")
+            return generated_data
+        else:
+            print("⚠ No LLM data was generated successfully")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error in automatic LLM processing: {e}")
+        return None
 
 @router.post("/upload-material", response_model=schemas.Material)
 async def upload_material(
@@ -28,10 +105,15 @@ async def upload_material(
     if file.content_type == "application/pdf":
         file_type = "pdf"
         
-        # Extract text content from PDF
+        # Extract text content from PDF with better formatting preservation
         pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-        for page in pdf_reader.pages:
-            content += page.extract_text() + "\n"
+        for page_num, page in enumerate(pdf_reader.pages):
+            page_text = page.extract_text()
+            if page_text.strip():  # Only add non-empty pages
+                content += page_text
+                # Add page separator for multi-page PDFs
+                if page_num < len(pdf_reader.pages) - 1:
+                    content += "\n\n--- Page {} ---\n\n".format(page_num + 2)
         
         # Upload PDF to Supabase Storage
         if not supabase_storage.supabase:
@@ -60,7 +142,17 @@ async def upload_material(
             
     elif file.content_type == "text/plain":
         file_type = "text"
-        content = file_content.decode("utf-8")
+        # Try different encodings to preserve original formatting
+        try:
+            content = file_content.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                content = file_content.decode("utf-8-sig")  # UTF-8 with BOM
+            except UnicodeDecodeError:
+                try:
+                    content = file_content.decode("latin-1")
+                except UnicodeDecodeError:
+                    content = file_content.decode("utf-8", errors="replace")
         
     else:
         raise HTTPException(
@@ -79,6 +171,54 @@ async def upload_material(
     db.add(db_material)
     db.commit()
     db.refresh(db_material)
+    
+    # Automatically process with LLM: generate summaries, quiz questions, and extract key concepts
+    await auto_process_with_llm(db_material, db)
+    
+    return db_material
+
+@router.post("/upload-text", response_model=schemas.Material)
+async def upload_text(
+    text_data: TextUpload,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Upload text content directly."""
+    
+    # Validate input
+    if not text_data.title.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title is required"
+        )
+    
+    if not text_data.content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Content is required"
+        )
+    
+    if len(text_data.content.strip()) < 50:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Content must be at least 50 characters long"
+        )
+    
+    # Create material record
+    db_material = models.Material(
+        title=text_data.title.strip(),
+        content=text_data.content,  # Don't strip content to preserve formatting
+        file_type="text",
+        file_url=None,  # No file URL for direct text input
+        user_id=current_user.id
+    )
+    
+    db.add(db_material)
+    db.commit()
+    db.refresh(db_material)
+    
+    # Automatically process with LLM: generate summaries, quiz questions, and extract key concepts
+    await auto_process_with_llm(db_material, db)
     
     return db_material
 

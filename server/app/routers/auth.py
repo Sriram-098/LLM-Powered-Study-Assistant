@@ -7,6 +7,10 @@ from ..database import get_db
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
+@router.get("/")
+def auth_welcome():
+    return "Welcome"
+
 @router.post("/register", response_model=schemas.User)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """Register a new user."""
@@ -65,6 +69,11 @@ def login_user(
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.get("/me", response_model=schemas.User)
+def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
+    """Get current user information."""
+    return current_user
 
 @router.post("/logout")
 def logout_user(response: Response):
