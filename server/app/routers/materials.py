@@ -23,6 +23,8 @@ async def auto_process_with_llm(material: models.Material, db: Session):
     - Generate concise summaries
     - Create quiz questions for revision
     - Extract key concepts and terms in neat structured format
+    
+    Optimized for faster processing with reduced content size
     """
     if not material.content or len(material.content.strip()) < 50:
         print(f"⚠ Content too short for LLM processing: {len(material.content.strip())} characters")
@@ -40,29 +42,32 @@ async def auto_process_with_llm(material: models.Material, db: Session):
         quiz_questions = None
         key_concepts = None
         
-        # 1. Generate concise summary
+        # Optimize content size for faster processing (use first 5000 chars for large files)
+        content_to_process = material.content[:5000] if len(material.content) > 5000 else material.content
+        
+        # 1. Generate concise summary (fastest)
         try:
             print("📝 Generating concise summary...")
-            summary = gemini_service.generate_summary(material.content)
+            summary = gemini_service.generate_summary(content_to_process)
             print(f"✅ Summary generated successfully ({len(summary)} characters)")
         except Exception as e:
             print(f"❌ Failed to generate summary: {e}")
         
-        # 2. Create quiz questions for revision
-        try:
-            print("❓ Creating quiz questions for revision...")
-            quiz_questions = gemini_service.generate_quiz(material.content, num_mcq=8, num_short=4)
-            print(f"✅ Quiz questions created successfully ({len(quiz_questions)} questions)")
-        except Exception as e:
-            print(f"❌ Failed to create quiz questions: {e}")
-        
-        # 3. Extract key concepts and terms in structured format
+        # 2. Extract key concepts (fast)
         try:
             print("🔍 Extracting key concepts and terms...")
-            key_concepts = gemini_service.extract_concepts(material.content, max_concepts=12)
+            key_concepts = gemini_service.extract_concepts(content_to_process, max_concepts=10)
             print(f"✅ Key concepts extracted successfully ({len(key_concepts)} concepts)")
         except Exception as e:
             print(f"❌ Failed to extract key concepts: {e}")
+        
+        # 3. Create quiz questions (slower - reduced count for speed)
+        try:
+            print("❓ Creating quiz questions for revision...")
+            quiz_questions = gemini_service.generate_quiz(content_to_process, num_mcq=6, num_short=3)
+            print(f"✅ Quiz questions created successfully ({len(quiz_questions)} questions)")
+        except Exception as e:
+            print(f"❌ Failed to create quiz questions: {e}")
         
         # Save all generated data to database
         if summary or quiz_questions or key_concepts:

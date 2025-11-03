@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 // Create axios instance with default config
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
-  timeout: 30000,
+  timeout: 180000, // 3 minutes timeout for file uploads and AI processing
   withCredentials: true, // Enable for cookie-based auth
   headers: {
     'Content-Type': 'application/json',
@@ -68,5 +68,39 @@ export const testConnection = async () => {
     }
   }
 }
+
+// Create a separate instance for file uploads with longer timeout
+export const apiUpload = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  timeout: 300000, // 5 minutes timeout for large file uploads
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'multipart/form-data',
+  },
+})
+
+// Add interceptors to upload instance
+apiUpload.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
+
+apiUpload.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.code === 'ECONNABORTED') {
+      toast.error('Upload timeout. File may be too large or processing is taking too long.')
+    } else if (error.response?.status === 413) {
+      toast.error('File is too large. Maximum size is 10MB.')
+    }
+    return Promise.reject(error)
+  }
+)
 
 export default api

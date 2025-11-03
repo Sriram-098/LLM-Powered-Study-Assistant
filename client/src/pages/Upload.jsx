@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../services/api'
+import api, { apiUpload } from '../services/api'
 import toast from 'react-hot-toast'
 import { PageHeader, Card, FormInput, FileUpload, Button, InputTypeSelector, TextInput, AIProcessingAnimation } from '../components'
 
@@ -67,15 +67,11 @@ const Upload = () => {
       let response
 
       if (inputType === 'file') {
-        // File upload
+        // File upload with extended timeout
         const formData = new FormData()
         formData.append('file', file)
         
-        response = await api.post(`/materials/upload-material?title=${encodeURIComponent(title.trim())}`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        })
+        response = await apiUpload.post(`/materials/upload-material?title=${encodeURIComponent(title.trim())}`, formData)
       } else {
         // Text upload
         response = await api.post('/materials/upload-text', {
