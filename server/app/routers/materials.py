@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 from .. import models, schemas, auth
 from ..database import get_db
@@ -17,23 +17,84 @@ class TextUpload(BaseModel):
     title: str
     content: str
 
+def auto_process_with_llm_background(material_id: int, content: str, db_session):
+    """
+    Background task to process uploaded material with LLM.
+    Runs asynchronously without blocking the upload response.
+    """
+    from ..database import SessionLocal
+    
+    # Create new database session for background task
+    db = SessionLocal()
+    
+    try:
+        if not content or len(content.strip()) < 50:
+            print(f"⚠ Content too short for LLM processing: {len(content.strip())} characters")
+            return
+        
+        if not gemini_service.is_configured():
+            print("⚠ LLM service not configured - skipping automatic processing")
+            return
+        
+        print(f"🤖 Starting background LLM processing for material ID: {material_id}")
+        
+        # Initialize results
+        summary = None
+        quiz_questions = None
+        key_concepts = None
+        
+        # Optimize content size for faster processing
+        content_to_process = content[:8000] if len(content) > 8000 else content
+        
+        # 1. Generate summary (fastest)
+        try:
+            print("📝 Generating summary...")
+            summary = gemini_service.generate_summary(content_to_process, max_length=300)
+            print(f"✅ Summary generated")
+        except Exception as e:
+            print(f"❌ Failed to generate summary: {e}")
+        
+        # 2. Extract key concepts (fast)
+        try:
+            print("🔍 Extracting key concepts...")
+            key_concepts = gemini_service.extract_concepts(content_to_process, max_concepts=10)
+            print(f"✅ Key concepts extracted")
+        except Exception as e:
+            print(f"❌ Failed to extract key concepts: {e}")
+        
+        # 3. Create quiz questions (slower)
+        try:
+            print("❓ Creating quiz questions...")
+            quiz_questions = gemini_service.generate_quiz(content_to_process, num_mcq=6, num_short=3)
+            print(f"✅ Quiz questions created")
+        except Exception as e:
+            print(f"❌ Failed to create quiz questions: {e}")
+        
+        # Save all generated data to database
+        if summary or quiz_questions or key_concepts:
+            generated_data = models.GeneratedData(
+                material_id=material_id,
+                summary=summary,
+                quiz_questions=json.dumps(quiz_questions) if quiz_questions else None,
+                key_concepts=json.dumps(key_concepts) if key_concepts else None
+            )
+            db.add(generated_data)
+            db.commit()
+            print(f"💾 LLM data saved for material ID: {material_id}")
+        else:
+            print("⚠ No LLM data was generated")
+            
+    except Exception as e:
+        print(f"❌ Error in background LLM processing: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 async def auto_process_with_llm(material: models.Material, db: Session):
     """
-    Automatically process uploaded material with LLM to:
-    - Generate concise summaries
-    - Create quiz questions for revision
-    - Extract key concepts and terms in neat structured format
-    
-    Optimized for faster processing with reduced content size
+    Legacy function - kept for compatibility.
+    Now just calls the background version.
     """
-    if not material.content or len(material.content.strip()) < 50:
-        print(f"⚠ Content too short for LLM processing: {len(material.content.strip())} characters")
-        return None
-    
-    if not gemini_service.is_configured():
-        print("⚠ LLM service not configured - skipping automatic processing")
-        return None
-    
     print(f"🤖 Starting automatic LLM processing for material: {material.title}")
     
     try:
@@ -93,12 +154,13 @@ async def auto_process_with_llm(material: models.Material, db: Session):
 
 @router.post("/upload-material", response_model=schemas.Material)
 async def upload_material(
+    background_tasks: BackgroundTasks,
     title: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """Upload study material (PDF or text file)."""
+    """Upload study material (PDF or text file). AI processing happens in background for instant response."""
     content = ""
     file_type = ""
     file_url = None
@@ -177,13 +239,21 @@ async def upload_material(
     db.commit()
     db.refresh(db_material)
     
-    # Automatically process with LLM: generate summaries, quiz questions, and extract key concepts
-    await auto_process_with_llm(db_material, db)
+    # Process with LLM in background for instant response
+    background_tasks.add_task(
+        auto_process_with_llm_background,
+        material_id=db_material.id,
+        content=content,
+        db_session=db
+    )
+    
+    print(f"✅ Material uploaded instantly. AI processing queued in background.")
     
     return db_material
 
 @router.post("/upload-text", response_model=schemas.Material)
 async def upload_text(
+    background_tasks: BackgroundTasks,
     text_data: TextUpload,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
@@ -222,8 +292,15 @@ async def upload_text(
     db.commit()
     db.refresh(db_material)
     
-    # Automatically process with LLM: generate summaries, quiz questions, and extract key concepts
-    await auto_process_with_llm(db_material, db)
+    # Process with LLM in background for instant response
+    background_tasks.add_task(
+        auto_process_with_llm_background,
+        material_id=db_material.id,
+        content=text_data.content,
+        db_session=db
+    )
+    
+    print(f"✅ Text uploaded instantly. AI processing queued in background.")
     
     return db_material
 

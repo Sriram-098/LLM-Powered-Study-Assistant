@@ -18,6 +18,19 @@ const MaterialView = () => {
   const [activeTab, setActiveTab] = useState('content')
   const [showQuizTaker, setShowQuizTaker] = useState(false)
   const [quizScore, setQuizScore] = useState(null)
+  
+  // Customization states
+  const [showCustomize, setShowCustomize] = useState({
+    summary: false,
+    quiz: false,
+    concepts: false
+  })
+  const [customSettings, setCustomSettings] = useState({
+    summaryLength: 300,
+    numMcq: 10,
+    numShort: 5,
+    maxConcepts: 10
+  })
 
   useEffect(() => {
     fetchMaterial()
@@ -36,10 +49,11 @@ const MaterialView = () => {
     }
   }
 
-  const generateSummary = async () => {
+  const generateSummary = async (maxLength = customSettings.summaryLength) => {
     setGenerating(prev => ({ ...prev, summary: true }))
+    setShowCustomize(prev => ({ ...prev, summary: false }))
     try {
-      const response = await api.post(`/llm/generate-summary/${id}`)
+      const response = await api.post(`/llm/generate-summary/${id}?max_length=${maxLength}`)
       setGeneratedData(prev => ({
         ...prev,
         summary: response.data.summary
@@ -52,15 +66,17 @@ const MaterialView = () => {
     }
   }
 
-  const generateQuiz = async () => {
+  const generateQuiz = async (numMcq = customSettings.numMcq, numShort = customSettings.numShort) => {
     setGenerating(prev => ({ ...prev, quiz: true }))
+    setShowCustomize(prev => ({ ...prev, quiz: false }))
     try {
-      const response = await api.post(`/llm/generate-quiz/${id}`)
+      const response = await api.post(`/llm/generate-quiz/${id}?num_mcq=${numMcq}&num_short=${numShort}`)
       setGeneratedData(prev => ({
         ...prev,
         quiz_questions: JSON.stringify(response.data.quiz_questions)
       }))
       toast.success('Quiz generated successfully!')
+      setShowQuizTaker(false)
     } catch (error) {
       toast.error('Failed to generate quiz')
     } finally {
@@ -68,10 +84,11 @@ const MaterialView = () => {
     }
   }
 
-  const generateConcepts = async () => {
+  const generateConcepts = async (maxConcepts = customSettings.maxConcepts) => {
     setGenerating(prev => ({ ...prev, concepts: true }))
+    setShowCustomize(prev => ({ ...prev, concepts: false }))
     try {
-      const response = await api.post(`/llm/extract-concepts/${id}`)
+      const response = await api.post(`/llm/extract-concepts/${id}?max_concepts=${maxConcepts}`)
       setGeneratedData(prev => ({
         ...prev,
         key_concepts: JSON.stringify(response.data.key_concepts)
@@ -498,14 +515,67 @@ const MaterialView = () => {
 
         {activeTab === 'summary' && generatedData?.summary && (
           <div className="animate-fade-in">
-            <h2 className="heading-3 text-gray-900 mb-6 flex items-center">
-              <span className="p-2 bg-green-100 rounded-lg mr-3">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <h2 className="heading-3 text-gray-900 flex items-center">
+                <span className="p-2 bg-green-100 rounded-lg mr-3">
+                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </span>
+                AI-Generated Summary
+              </h2>
+              <button
+                onClick={() => setShowCustomize(prev => ({ ...prev, summary: !prev.summary }))}
+                className="inline-flex items-center justify-center px-4 py-2 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors cursor-pointer w-full sm:w-auto"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-              </span>
-              AI-Generated Summary
-            </h2>
+                Regenerate
+              </button>
+            </div>
+
+            {showCustomize.summary && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Customize Summary</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Summary Length: {customSettings.summaryLength} words
+                    </label>
+                    <input
+                      type="range"
+                      min="100"
+                      max="10000"
+                      step="100"
+                      value={customSettings.summaryLength}
+                      onChange={(e) => setCustomSettings(prev => ({ ...prev, summaryLength: parseInt(e.target.value) }))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>Brief (100)</span>
+                      <span>Very Detailed (10000)</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      onClick={() => generateSummary(customSettings.summaryLength)}
+                      disabled={generating.summary}
+                      className="flex-1 px-4 py-2 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {generating.summary ? 'Generating...' : 'Generate New Summary'}
+                    </button>
+                    <button
+                      onClick={() => setShowCustomize(prev => ({ ...prev, summary: false }))}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors cursor-pointer sm:w-auto"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
               <MarkdownRenderer content={generatedData.summary} />
             </div>
@@ -526,17 +596,87 @@ const MaterialView = () => {
               />
             ) : (
               <>
-                <div className="text-center">
-                  <h2 className="heading-3 text-gray-900 mb-6 flex items-center justify-center">
-                    <span className="p-2 bg-purple-100 rounded-lg mr-3">
-                      <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+                    <h2 className="heading-3 text-gray-900 flex items-center">
+                      <span className="p-2 bg-purple-100 rounded-lg mr-3">
+                        <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </span>
+                      Quiz Ready
+                    </h2>
+                    <button
+                      onClick={() => setShowCustomize(prev => ({ ...prev, quiz: !prev.quiz }))}
+                      className="inline-flex items-center justify-center px-4 py-2 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors cursor-pointer w-full sm:w-auto"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
-                    </span>
-                    Quiz Ready
-                  </h2>
+                      Regenerate
+                    </button>
+                  </div>
 
-                  <div className="bg-gray-50 rounded-xl p-8 border border-gray-200 mb-6">
+                  {showCustomize.quiz && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
+                      <h3 className="font-semibold text-gray-900 mb-3">Customize Quiz</h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Multiple Choice Questions: {customSettings.numMcq}
+                          </label>
+                          <input
+                            type="range"
+                            min="1"
+                            max="50"
+                            step="1"
+                            value={customSettings.numMcq}
+                            onChange={(e) => setCustomSettings(prev => ({ ...prev, numMcq: parseInt(e.target.value) }))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>1</span>
+                            <span>50</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Short Answer Questions: {customSettings.numShort}
+                          </label>
+                          <input
+                            type="range"
+                            min="1"
+                            max="20"
+                            step="1"
+                            value={customSettings.numShort}
+                            onChange={(e) => setCustomSettings(prev => ({ ...prev, numShort: parseInt(e.target.value) }))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>1</span>
+                            <span>20</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <button
+                            onClick={() => generateQuiz(customSettings.numMcq, customSettings.numShort)}
+                            disabled={generating.quiz}
+                            className="flex-1 px-4 py-2 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                          >
+                            {generating.quiz ? 'Generating...' : 'Generate New Quiz'}
+                          </button>
+                          <button
+                            onClick={() => setShowCustomize(prev => ({ ...prev, quiz: false }))}
+                            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors cursor-pointer sm:w-auto"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="bg-gray-50 rounded-xl p-6 sm:p-8 border border-gray-200 mb-6 text-center">
                     <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -551,9 +691,9 @@ const MaterialView = () => {
 
                     <button
                       onClick={() => setShowQuizTaker(true)}
-                      className="inline-flex items-center px-8 py-4 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors text-lg cursor-pointer"
+                      className="inline-flex items-center justify-center px-6 sm:px-8 py-3 sm:py-4 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors text-base sm:text-lg cursor-pointer w-full sm:w-auto"
                     >
-                      <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       Take Quiz
@@ -561,21 +701,21 @@ const MaterialView = () => {
                   </div>
 
                   {quizScore && (
-                    <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-lg font-bold text-gray-900 mb-1">Latest Quiz Score</h3>
-                          <p className="text-gray-600">
+                    <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-4 sm:p-6">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="text-center sm:text-left">
+                          <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1">Latest Quiz Score</h3>
+                          <p className="text-sm sm:text-base text-gray-600">
                             You scored {quizScore.correct} out of {quizScore.total} questions correctly
                           </p>
                         </div>
-                        <div className="text-right">
-                          <div className={`text-3xl font-bold ${quizScore.percentage >= 80 ? 'text-green-600' :
+                        <div className="text-center sm:text-right">
+                          <div className={`text-2xl sm:text-3xl font-bold ${quizScore.percentage >= 80 ? 'text-green-600' :
                             quizScore.percentage >= 60 ? 'text-yellow-600' : 'text-red-600'
                             }`}>
                             {quizScore.percentage}%
                           </div>
-                          <p className="text-sm text-gray-500">Score</p>
+                          <p className="text-xs sm:text-sm text-gray-500">Score</p>
                         </div>
                       </div>
                     </div>
@@ -588,14 +728,67 @@ const MaterialView = () => {
 
         {activeTab === 'concepts' && keyConcepts.length > 0 && (
           <div className="animate-fade-in">
-            <h2 className="heading-3 text-gray-900 mb-6 flex items-center">
-              <span className="p-2 bg-blue-100 rounded-lg mr-3">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <h2 className="heading-3 text-gray-900 flex items-center">
+                <span className="p-2 bg-blue-100 rounded-lg mr-3">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </span>
+                Key Concepts
+              </h2>
+              <button
+                onClick={() => setShowCustomize(prev => ({ ...prev, concepts: !prev.concepts }))}
+                className="inline-flex items-center justify-center px-4 py-2 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors cursor-pointer w-full sm:w-auto"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-              </span>
-              Key Concepts
-            </h2>
+                Regenerate
+              </button>
+            </div>
+
+            {showCustomize.concepts && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Customize Concepts</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Number of Concepts: {customSettings.maxConcepts}
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="50"
+                      step="1"
+                      value={customSettings.maxConcepts}
+                      onChange={(e) => setCustomSettings(prev => ({ ...prev, maxConcepts: parseInt(e.target.value) }))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>Few (1)</span>
+                      <span>Many (50)</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      onClick={() => generateConcepts(customSettings.maxConcepts)}
+                      disabled={generating.concepts}
+                      className="flex-1 px-4 py-2 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {generating.concepts ? 'Extracting...' : 'Extract New Concepts'}
+                    </button>
+                    <button
+                      onClick={() => setShowCustomize(prev => ({ ...prev, concepts: false }))}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors cursor-pointer sm:w-auto"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-4">
               {keyConcepts.map((concept, index) => {
                 // Parse the concept string to extract name and explanation

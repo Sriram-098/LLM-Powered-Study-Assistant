@@ -88,6 +88,10 @@ class GeminiService:
         content_preview = content[:3000] if len(content) > 3000 else content
         
         try:
+            # Adjust content preview based on requested summary length
+            content_chars = max(3000, min(15000, max_length * 20))  # Roughly 20 chars per word
+            content_preview = content[:content_chars] if len(content) > content_chars else content
+            
             prompt = f"""
 You are an AI summarization assistant.
 Your task is to read the following content and write a single, concise, foreword-style summary that introduces what the text is about.
@@ -97,12 +101,14 @@ INSTRUCTIONS:
 - Clearly mention the main ideas, themes, and purpose of the content.
 - Explain briefly why the topic is interesting or useful to learn.
 - Keep the language natural, friendly, and easy to follow.
-- The summary must be under 1000 words and written as ONE continuous paragraph.
+- The summary must be approximately {max_length} words (target length: {max_length} words).
+- Write as ONE continuous paragraph or multiple paragraphs if needed for longer summaries.
+- For longer summaries (1000+ words), you can organize into logical sections but maintain natural flow.
 
 STRICTLY AVOID:
 - Academic, robotic, or overly formal tone.
 - Repetition, filler phrases, or vague sentences.
-- Long explanations, bullet points, or structured formatting.
+- Bullet points or overly structured formatting.
 - Meta-text like "This passage discusses..." — make it read naturally.
 
 STYLE EXAMPLE:
@@ -112,7 +118,7 @@ CONTENT:
 {content_preview}
 
 OUTPUT:
-Write only the final summary paragraph with no titles, notes, or extra commentary.
+Write only the final summary (approximately {max_length} words) with no titles, notes, or extra commentary.
 """
 
             

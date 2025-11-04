@@ -91,17 +91,9 @@ export const AuthProvider = ({ children }) => {
 
       await registerApi.post('/auth/register', userData)
 
-      // Auto-login after registration
-      const loginResult = await login({
-        email: userData.email,
-        password: userData.password,
-      })
-
-      if (loginResult.success) {
-        toast.success('Account created successfully!')
-      }
-
-      return loginResult
+      // Registration successful - redirect to login
+      toast.success('Account created successfully! Please login to continue.')
+      return { success: true, redirectToLogin: true }
     } catch (error) {
       const message = error.response?.data?.detail || 'Registration failed'
       toast.error(message)

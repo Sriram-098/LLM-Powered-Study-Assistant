@@ -8,8 +8,11 @@ const Register = () => {
 
   const handleRegister = async (formData) => {
     const result = await register(formData)
-    if (result.success) {
-      navigate('/')
+    if (result.success && result.redirectToLogin) {
+      // Redirect to login page after successful registration
+      setTimeout(() => {
+        navigate('/login')
+      }, 1500) // Small delay to show success message
     }
     return result
   }
